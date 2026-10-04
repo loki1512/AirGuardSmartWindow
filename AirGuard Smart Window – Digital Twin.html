@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AirGuard Smart Window – Digital Twin</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#e9eff0;--card:#f8fbfb;--ink:#17262d;--mute:#5b6e76;--line:#cfdadd;--ok:#1f7a74;--warn:#b9741f;--bad:#b3403a;--sky:#cfe3e8;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a1e;--card:#162429;--ink:#e3eef0;--mute:#8aa0a8;--line:#27393f;--ok:#4fc0b6;--warn:#e0a24f;--bad:#e8776f;--sky:#1d3640}}
+:root[data-theme="dark"]{--bg:#0f1a1e;--card:#162429;--ink:#e3eef0;--mute:#8aa0a8;--line:#27393f;--ok:#4fc0b6;--warn:#e0a24f;--bad:#e8776f;--sky:#1d3640}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 'Instrument Sans',system-ui,sans-serif}
+main{max-width:1150px;margin:0 auto;padding:12px 12px 40px;display:grid;gap:12px}
+h1{font-size:22px;margin:0}h2{font-size:15px;margin:0 0 8px;font-weight:600}
+.sub{color:var(--mute);margin:0;font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}
+.top{display:grid;grid-template-columns:290px 1fr;gap:12px}
+.win{display:flex;flex-direction:column;gap:8px}
+.win svg{width:100%;height:auto;display:block}
+.st{display:grid;gap:6px;font-size:14px}
+.pill{display:inline-block;padding:1px 9px;border-radius:99px;font-weight:600;font-size:12px;border:1px solid currentColor}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;font-size:13px}
+.ctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:6px 18px}
+.ctl label{display:grid;grid-template-columns:1fr auto;font-size:13px}
+.ctl input{grid-column:1/3;width:100%;accent-color:var(--ok);margin:2px 0}
+button,select{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;padding:5px 10px;cursor:pointer}
+button.p{background:var(--ok);color:#fff;border-color:var(--ok)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+.tl{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.t{border-left:3px solid var(--ok);padding:2px 10px;min-width:0}.t.prev{border-color:var(--mute)}
+.t span{font-size:12px;color:var(--mute)}.t b{display:block;font-size:19px;font-weight:600}.t small{color:var(--mute);display:block}
+.sensors{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}
+.s{border:1px solid var(--line);border-radius:6px;padding:6px 8px}.s b{display:block;font-size:19px;font-weight:600}.s span{color:var(--mute);font-size:12px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#log{max-height:220px;overflow:auto;font-size:13px;margin:0;padding:0;list-style:none}
+#log li{padding:3px 0;border-bottom:1px solid var(--line)}#log time{color:var(--mute);margin-right:8px}
+.q{display:flex;gap:6px;margin-top:6px}.q div{flex:1;border:1px solid var(--line);border-radius:6px;padding:4px;text-align:center;font-size:12px}.q .best{border-color:var(--ok);color:var(--ok);font-weight:600}
+.flow{stroke-dasharray:6 8;animation:fl 1s linear infinite}@keyframes fl{to{stroke-dashoffset:-14}}
+.fan{transform-origin:150px 340px;animation:sp .6s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.flow,.fan{animation:none}}
+@media(max-width:800px){
+ .top,.two{grid-template-columns:1fr}
+ .win{flex-direction:row;align-items:center;gap:10px}.win svg{flex:0 0 96px;width:96px}.st{flex:1}
+ .ctl{grid-template-columns:1fr 1fr;gap:2px 12px}.ctl label{font-size:12px}h1{font-size:19px}
+}
+</style>
+</head>
+<body>
+<main>
+<div><h1>AirGuard Smart Window</h1><p class="sub">Digital twin with ML forecaster and RL sensing-interval policy. Rules keep control of safety and actuation.</p></div>
+
+<div class="top">
+ <div class="card win">
+  <svg viewBox="0 0 300 380" aria-label="Animated window">
+   <rect width="300" height="380" rx="8" fill="var(--sky)"/>
+   <rect id="haze" x="30" y="30" width="240" height="290" fill="#a0722e" opacity="0"/>
+   <path class="flow" id="flowp" d="M250 90H170M250 160H170M250 230H170" stroke="var(--ok)" stroke-width="3" fill="none" opacity="0"/>
+   <g id="sash"><rect x="40" y="40" width="220" height="270" fill="#bfe0ea" fill-opacity=".55" stroke="var(--ink)" stroke-width="5"/><path d="M60 80l70-30M60 140l120-90" stroke="#fff" stroke-opacity=".6" stroke-width="6"/></g>
+   <rect x="30" y="30" width="240" height="290" fill="none" stroke="var(--ink)" stroke-width="10" rx="2"/>
+   <rect x="95" y="322" width="110" height="52" rx="8" fill="var(--card)" stroke="var(--line)"/>
+   <g id="fan"><circle cx="150" cy="340" r="13" fill="none" stroke="var(--mute)"/><path d="M150 328v24M138 340h24" stroke="var(--mute)" stroke-width="3"/></g>
+   <text x="150" y="367" text-anchor="middle" font-size="11" fill="var(--mute)" id="fanlbl">Filter off</text>
+  </svg>
+  <div class="st">
+   <div>Window <b id="wstate">CLOSED</b> <span class="pill ok" id="fstate">Filter OFF</span></div>
+   <div id="brief" style="color:var(--mute);font-size:13px">Waiting for first reading</div>
+   <div style="font-size:13px">Next wake in <b id="next2">–</b></div>
+  </div>
+ </div>
+ <div class="card">
+  <div class="row">
+   <label>Speed <select id="speed"><option value="1">1×</option><option value="60" selected>60×</option><option value="300">300×</option><option value="900">900×</option></select></label>
+   <button class="p" id="wake">Wake sensor now</button><button id="pause">Pause</button><button id="reset">Reset</button>
+   <span style="color:var(--mute)">Virtual <b id="vt">00:00</b></span>
+  </div>
+  <div class="ctl" id="ctl"></div>
+ </div>
+</div>
+
+<div class="card"><h2>Decision timeline (real time)</h2>
+ <div class="tl">
+  <div class="t"><span>Last sensor reading</span><b id="last">–</b><small id="lastAt"></small></div>
+  <div class="t"><span>Next sensor wake</span><b id="next">–</b><small id="nextI"></small></div>
+  <div class="t"><span>Current decision</span><b id="dec">HOLD</b><small id="decAt"></small><small id="why"></small></div>
+  <div class="t prev"><span>Previous decision</span><b id="pdec">None yet</b><small id="pdecAt"></small><small id="pwhy"></small></div>
+  <div class="t"><span>Window action</span><b id="act">Idle</b><small id="actS"></small></div>
+ </div>
+</div>
+
+<div class="card"><h2>Latest sensor readings <span style="font-weight:400;color:var(--mute)">(what the controller sees)</span></h2><div class="sensors" id="sens"></div></div>
+
+<div class="two">
+ <div class="card"><h2>ML + RL sensing policy</h2>
+  <div class="row">
+   <label>Interval policy <select id="mode"><option value="rl" selected>RL (Q-learning)</option><option value="rule">Rule-based</option></select></label>
+   <button id="train">Pre-train RL (fast)</button><button id="rlreset">Reset learning</button>
+  </div>
+  <div class="sensors" id="ml"></div>
+  <div class="q" id="qv"></div>
+  <p class="sub" style="margin-top:8px">ML: online linear regression forecasts the next outdoor PM2.5 change. RL: tabular Q-learning picks the next interval (5, 10, 30 or 60 min). Reward = −(risk minutes + wake cost + window moves). Safety clamp limits the interval to 10 min when PM2.5 &gt; 125 or CO₂ &gt; 1400.</p>
+ </div>
+ <div class="card"><h2>Adaptive vs fixed 5-min sensing</h2><div class="sensors" id="met"></div></div>
+</div>
+<div class="card"><h2>Event log</h2><ul id="log"></ul></div>
+<p class="sub">Simulation only: no physical sensors, motor or real weather feed.</p>
+</main>
+<script>
+const SL=[['opm','Outdoor PM2.5',0,250,1,'µg/m³',30],['co2','Indoor CO₂',400,2000,10,'ppm',750],['occ','Occupancy',0,10,1,'people',2],['ipm','Indoor PM2.5',0,100,1,'µg/m³',10],['bat','Battery',0,100,0.5,'%',100],['opm10','Outdoor PM10',0,400,1,'µg/m³',50],['voc','VOC',0,1,0.01,'ppm',0.1],['temp','Temperature',10,45,1,'°C',26],['hum','Humidity',20,95,1,'%',50],['vol','Weather volatility',0,100,1,'%',20]];
+const ACT=[5,10,30,60],$=id=>document.getElementById(id),fmt=(v,d=0)=>Number(v).toFixed(d);
+let Q={},W=[0,0,0,0,0,0],mlN=0,mlErr=0,rlN=0,eps=0.1,training=false,mode='rl';
+let E,base,M,prevM,wakeIn,intervalMin,wakes,vsec,decision,prevDec,filter,win,pos,actT,actTarget,dwell,moves,exposure,lastReal,lastWakeV,paused=false,speed=60,moveT,energyUsed,intervalSum,pendingWant,riskMin,movesSince,lastS,lastA,mlX,curS;
+function log(t){if(training)return;const li=document.createElement('li');li.innerHTML='<time>'+new Date().toLocaleTimeString()+'</time>'+t;$('log').prepend(li);while($('log').children.length>60)$('log').lastChild.remove()}
+function init(){
+ E={};SL.forEach(s=>E[s[0]]=s[6]);base={opm:E.opm,opm10:E.opm10};
+ M=null;prevM=null;wakes=0;vsec=0;decision={a:'HOLD',why:'Waiting for first reading',at:null};prevDec=null;filter=false;win='CLOSED';pos=0;actT=null;actTarget=null;pendingWant=null;dwell=99;moves=0;exposure=0;lastWakeV=0;moveT=0;energyUsed=0;intervalSum=0;intervalMin=30;wakeIn=1;riskMin=0;movesSince=0;lastS=null;lastA=null;mlX=null;curS=null;lastReal=Date.now();
+ if(!training){$('log').innerHTML='';buildCtl();log('Simulation started. Window closed, filter off.')}
+}
+function buildCtl(){
+ $('ctl').innerHTML='';
+ SL.forEach(s=>{const l=document.createElement('label');l.innerHTML='<span>'+s[1]+'</span><b id="v_'+s[0]+'"></b><input type="range" id="r_'+s[0]+'" min="'+s[2]+'" max="'+s[3]+'" step="'+s[4]+'" value="'+E[s[0]]+'" aria-label="'+s[1]+'">';$('ctl').append(l);
+  l.querySelector('input').oninput=e=>{E[s[0]]=+e.target.value;if(s[0]=='opm')base.opm=E.opm;if(s[0]=='opm10')base.opm10=E.opm10}});
+}
+const dot=(a,b)=>a.reduce((s,v,i)=>s+v*b[i],0);
+function sense(){const n=v=>v*(1+(Math.random()-.5)*.06);return{opm:n(E.opm),opm10:n(E.opm10),ipm:n(E.ipm),co2:n(E.co2),voc:n(E.voc),temp:E.temp,hum:E.hum,occ:E.occ,bat:E.bat,t:vsec,roc:0,fc:0}}
+function ruleInterval(m){let i=30;if(m.opm>60||m.co2>1000||m.ipm>25||Math.abs(m.roc)>2)i=10;if(m.opm>125||m.co2>1400||m.ipm>35||Math.abs(m.roc)>6)i=5;if(i==30&&m.bat<25)i=60;return i}
+function stateKey(m){return ''+(m.opm>125?2:m.opm>60?1:0)+(m.co2>1400?2:m.co2>1000?1:0)+(Math.abs(m.roc)>3?1:0)+(m.bat<25?1:0)+(m.fc>m.opm+10?1:0)}
+function decide(m){
+ const clean=m.opm<=60;
+ if(m.opm>125)return{a:'CLOSE',f:true,why:'Outdoor PM2.5 is high ('+fmt(m.opm)+' µg/m³). Close and filter.'};
+ if(m.co2>1000&&clean)return{a:'OPEN',f:false,why:'CO₂ is '+fmt(m.co2)+' ppm and outdoor air is clean. Ventilate.'};
+ if(m.co2>1000)return{a:'CLOSE',f:true,why:'CO₂ is high but outdoor PM2.5 is '+fmt(m.opm)+'. Close and filter.'};
+ if(m.ipm>35&&m.opm>m.ipm)return{a:'CLOSE',f:true,why:'Indoor PM2.5 is high and outdoor air is worse. Filter.'};
+ if(m.co2<800&&m.ipm<=25)return{a:'HOLD',f:filter&&m.opm>60,why:'Air is normal. No movement needed.'};
+ return{a:'HOLD',f:filter,why:'Within comfort band. Holding state.'};
+}
+function schedule(want){
+ if(win==='MOVING'){if(actTarget!==want)pendingWant=want;return}
+ if(want===win){actT=null;actTarget=null;pendingWant=null;return}
+ if(actTarget===want&&actT!==null)return;
+ if(dwell<15){pendingWant=want;return}
+ actTarget=want;actT=5;pendingWant=null;log('Actuator: '+want+' scheduled in 5 s');
+}
+function wake(){
+ lastReal=Date.now();prevM=M;M=sense();wakes++;E.bat=Math.max(0,E.bat-0.04);energyUsed+=0.04;
+ if(prevM)M.roc=(M.opm-prevM.opm)/Math.max((M.t-prevM.t)/60,1);
+ /* ML: online linear regression on next PM2.5 change */
+ if(mlX&&prevM){const tg=(M.opm-prevM.opm)/100,er=tg-dot(W,mlX);W=W.map((w,i)=>w+0.05*er*mlX[i]);mlErr=mlN?0.9*mlErr+0.1*Math.abs(er)*100:Math.abs(er)*100;mlN++}
+ mlX=[M.opm/100,M.roc/10,M.hum/100,M.temp/50,E.vol/100,1];M.fc=M.opm+100*dot(W,mlX);
+ /* RL: update previous (state, action), then choose next interval */
+ const s=stateKey(M);Q[s]=Q[s]||[0,0,0,0];
+ if(mode==='rl'&&lastS!==null){const r=-(0.5*riskMin+1.5+1*movesSince),q=Q[lastS];q[lastA]+=0.2*(r+0.9*Math.max(...Q[s])-q[lastA]);rlN++}
+ riskMin=0;movesSince=0;
+ let ai;
+ if(mode==='rl'){const q=Q[s];if(Math.random()<eps)ai=Math.floor(Math.random()*4);else{const mx=Math.max(...q),b=q.map((v,i)=>v===mx?i:-1).filter(i=>i>=0);ai=b[Math.floor(Math.random()*b.length)]}
+  if(M.opm>125||M.co2>1400)ai=Math.min(ai,1)}
+ else ai=ACT.indexOf(ruleInterval(M));
+ lastS=s;lastA=ai;curS=s;intervalMin=ACT[ai];intervalSum+=intervalMin;wakeIn=intervalMin*60/speed;lastWakeV=vsec;
+ const d=decide(M);prevDec=decision.at?decision:prevDec;decision={a:d.a,why:d.why,at:Date.now()};
+ if(d.f!==filter){filter=d.f;log('Filter '+(filter?'ON':'OFF'))}
+ log('Sensor woke: PM2.5 '+fmt(M.opm)+', CO₂ '+fmt(M.co2)+'. Decision <b>'+d.a+'</b>. Next wake in '+intervalMin+' min'+(mode==='rl'?' (RL)':' (rule)')+'.');
+ pendingWant=null;
+ if(d.a!=='HOLD')schedule(d.a==='OPEN'?'OPEN':'CLOSED');
+}
+function physics(dt){
+ const vm=dt*speed/60;vsec+=dt*speed;
+ const v=E.vol/100,dd=(Math.random()-.5)*v*60*Math.sqrt(vm)+(base.opm-E.opm)*0.05*vm;
+ E.opm=Math.min(250,Math.max(0,E.opm+dd));E.opm10=Math.min(400,Math.max(0,E.opm10+dd*1.6+(base.opm10-E.opm10)*.03*vm));
+ const k=win=='OPEN'?0.08:win=='MOVING'?0.04:0.004,kk=1-Math.exp(-k*vm);
+ E.ipm+=(E.opm-E.ipm)*kk;if(filter)E.ipm*=Math.exp(-0.06*vm);
+ E.co2+=E.occ*3*vm-(E.co2-420)*kk;E.voc+=((0.03+E.occ*0.015)-E.voc)*(1-Math.exp(-(0.01+k)*vm));
+ E.ipm=Math.min(100,Math.max(0,E.ipm));E.co2=Math.min(2000,Math.max(400,E.co2));E.voc=Math.min(1,Math.max(0,E.voc));
+ const use=(0.0005+(filter?0.004:0))*vm;E.bat=Math.max(0,E.bat-use);energyUsed+=use;
+ if(E.ipm>35){exposure+=vm}
+ if(E.ipm>35||E.co2>1400||(E.opm>125&&pos>.3))riskMin+=vm;
+}
+function step(dt){
+ physics(dt);dwell+=dt;
+ wakeIn-=dt;if(wakeIn<=0)wake();
+ if(actT!==null){actT-=dt;if(actT<=0){win='MOVING';moveT=2;actT=null;log('Window moving to '+actTarget)}}
+ if(win=='MOVING'){moveT-=dt;const tp=actTarget=='OPEN'?1:0;pos+=(tp-pos)*Math.min(1,dt*3);
+  if(moveT<=0){win=actTarget;pos=tp;actTarget=null;dwell=0;moves++;movesSince++;E.bat=Math.max(0,E.bat-0.1);energyUsed+=0.1;log('Window <b>'+win+'</b>')}}
+ if(pendingWant&&dwell>=15&&actT===null&&win!=='MOVING'){const w=pendingWant;pendingWant=null;schedule(w)}
+}
+function train(n){
+ training=true;const sp=speed,pe=eps;speed=300;eps=0.3;
+ for(let e=0;e<n;e++){init();
+  for(let i=0;i<300;i++){
+   if(i%50===0){base.opm=E.opm=Math.random()*220;E.occ=Math.floor(Math.random()*9);E.vol=Math.random()*80;E.bat=10+Math.random()*90;E.co2=500+Math.random()*900}
+   step(1)}}
+ training=false;speed=sp;eps=0.05;init();buildCtl();log('Pre-trained RL for '+n+' episodes ('+rlN+' updates). Exploration now 5%.');
+}
+const tm=t=>t?new Date(t).toLocaleTimeString():'';
+function render(){
+ SL.forEach(s=>{const k=s[0],r=$('r_'+k);if(document.activeElement!==r)r.value=E[k];$('v_'+k).textContent=fmt(E[k],s[4]<1?2:0)+' '+s[5]});
+ $('vt').textContent=String(Math.floor(vsec/3600)).padStart(2,'0')+':'+String(Math.floor(vsec/60)%60).padStart(2,'0');
+ $('wstate').textContent=win;$('sash').style.cssText='transform-origin:40px 175px;transform:scaleX('+(1-.65*pos)+')';
+ $('haze').setAttribute('opacity',Math.min(.6,E.opm/250*.8));
+ const fp=$('flowp');fp.setAttribute('opacity',pos>.3?1:0);fp.setAttribute('stroke',E.opm>125?'var(--bad)':E.opm>60?'var(--warn)':'var(--ok)');
+ $('fan').classList.toggle('fan',filter);$('fanlbl').textContent=filter?'Filter running':'Filter off';
+ const fs=$('fstate');fs.textContent='Filter '+(filter?'ON':'OFF');fs.className='pill '+(filter?'warn':'ok');
+ if(M){$('last').textContent=fmt((Date.now()-lastReal)/1000)+'s ago';$('lastAt').textContent='at '+tm(lastReal);
+  $('sens').innerHTML=[['Outdoor PM2.5',M.opm,'µg/m³'],['Outdoor PM10',M.opm10,'µg/m³'],['Indoor PM2.5',M.ipm,'µg/m³'],['CO₂',M.co2,'ppm'],['VOC',M.voc,'ppm',2],['Temp',M.temp,'°C'],['Humidity',M.hum,'%'],['Occupancy',M.occ,'people'],['Battery',E.bat,'%',1]].map(a=>'<div class="s"><span>'+a[0]+'</span><b>'+fmt(a[1],a[3]||0)+'</b><span>'+a[2]+'</span></div>').join('');
+ }else $('sens').innerHTML='<span style="color:var(--mute)">Sensor asleep. Waiting for first wake.</span>';
+ const nx=fmt(Math.max(0,wakeIn))+'s';$('next').textContent=nx;$('next2').textContent=nx;$('nextI').textContent='interval '+intervalMin+' min virtual';
+ const nm=d=>d.a=='HOLD'?'HOLD':d.a+' WINDOW';
+ $('dec').className=decision.a=='CLOSE'?'bad':decision.a=='OPEN'?'ok':'';$('dec').textContent=nm(decision);$('decAt').textContent=decision.at?'taken at '+tm(decision.at):'';$('why').textContent=decision.why;
+ $('brief').textContent=nm(decision)+': '+decision.why;
+ if(prevDec){$('pdec').textContent=nm(prevDec);$('pdecAt').textContent='taken at '+tm(prevDec.at);$('pwhy').textContent=prevDec.why}
+ $('act').textContent=actT!==null?fmt(actT)+'s':win=='MOVING'?'Moving':'Idle';$('actS').textContent=actT!==null?actTarget+' scheduled':win=='MOVING'?'to '+actTarget:'Window '+win;
+ const q=(curS&&Q[curS])||[0,0,0,0];
+ $('ml').innerHTML=[['PM2.5 forecast',M?fmt(M.fc):'–','µg/m³ next wake'],['Forecast error',fmt(mlErr,1),'µg/m³ avg ('+mlN+' obs)'],['RL state',curS||'–','PM·CO₂·Δ·bat·fc'],['RL updates',rlN,'exploration '+fmt(eps*100)+'%']].map(a=>'<div class="s"><span>'+a[0]+'</span><b>'+a[1]+'</b><span>'+a[2]+'</span></div>').join('');
+ $('qv').innerHTML=ACT.map((a,i)=>'<div class="'+(lastA===i&&mode==='rl'?'best':'')+'">'+a+' min<br>Q '+fmt(q[i],1)+'</div>').join('');
+ const fixed=Math.floor(vsec/300),avg=wakes?intervalSum/wakes:0;
+ $('met').innerHTML=[['Adaptive wake-ups',wakes],['Fixed 5-min wake-ups',fixed],['Sensing saved',fixed?fmt(Math.max(0,(1-wakes/fixed)*100))+'%':'–'],['Avg interval',fmt(avg,1)+' min'],['Window moves',moves],['Indoor PM2.5 > 35',fmt(exposure)+' min'],['Energy used',fmt(energyUsed,2)+'%']].map(a=>'<div class="s"><span>'+a[0]+'</span><b style="font-size:17px">'+a[1]+'</b></div>').join('');
+}
+$('speed').onchange=e=>{const n=+e.target.value;wakeIn=wakeIn*speed/n;speed=n};
+$('wake').onclick=()=>{wake();render()};
+$('pause').onclick=e=>{paused=!paused;e.target.textContent=paused?'Resume':'Pause'};
+$('reset').onclick=()=>{init();render()};
+$('mode').onchange=e=>{mode=e.target.value;lastS=null;log('Interval policy: '+(mode==='rl'?'RL':'rule-based'))};
+$('train').onclick=()=>train(60);
+$('rlreset').onclick=()=>{Q={};W=[0,0,0,0,0,0];mlN=0;mlErr=0;rlN=0;eps=0.1;log('RL table and ML weights cleared')};
+init();let t0=performance.now();
+setInterval(()=>{const n=performance.now(),dt=Math.min((n-t0)/1000,.5);t0=n;if(!paused)step(dt);render()},100);
+</script>
+</body>
+</html>
