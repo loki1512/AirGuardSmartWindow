@@ -51,7 +51,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 </head>
 <body>
 <main>
-<div><h1>AirGuard Smart Window</h1><p class="sub">Digital twin with ML forecaster and RL sensing-interval policy. Rules keep control of safety and actuation.</p></div>
+<div><h1>AirGuard Smart Window</h1><p class="sub">Digital twin with ML forecaster and RL sensing-interval policy. Rules control the window, filter and AC; RL only picks sensing intervals.</p></div>
 
 <div class="top">
  <div class="card win">
@@ -66,7 +66,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
    <text x="150" y="367" text-anchor="middle" font-size="11" fill="var(--mute)" id="fanlbl">Filter off</text>
   </svg>
   <div class="st">
-   <div>Window <b id="wstate">CLOSED</b> <span class="pill ok" id="fstate">Filter OFF</span></div>
+   <div>Window <b id="wstate">CLOSED</b> <span class="pill ok" id="fstate">Filter OFF</span> <span class="pill ok" id="astate">AC OFF</span></div>
    <div id="brief" style="color:var(--mute);font-size:13px">Waiting for first reading</div>
    <div style="font-size:13px">Next wake in <b id="next2">–</b></div>
   </div>
@@ -109,14 +109,14 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 <p class="sub">Simulation only: no physical sensors, motor or real weather feed.</p>
 </main>
 <script>
-const SL=[['opm','Outdoor PM2.5',0,250,1,'µg/m³',30],['co2','Indoor CO₂',400,2000,10,'ppm',750],['occ','Occupancy',0,10,1,'people',2],['ipm','Indoor PM2.5',0,100,1,'µg/m³',10],['bat','Battery',0,100,0.5,'%',100],['opm10','Outdoor PM10',0,400,1,'µg/m³',50],['voc','VOC',0,1,0.01,'ppm',0.1],['temp','Temperature',10,45,1,'°C',26],['hum','Humidity',20,95,1,'%',50],['vol','Weather volatility',0,100,1,'%',20]];
+const SL=[['opm','Outdoor PM2.5',0,250,1,'µg/m³',30],['co2','Indoor CO₂',400,2000,10,'ppm',750],['occ','Occupancy',0,10,1,'people',2],['ipm','Indoor PM2.5',0,100,1,'µg/m³',10],['bat','Battery',0,100,0.5,'%',100],['opm10','Outdoor PM10',0,400,1,'µg/m³',50],['voc','VOC',0,1,0.01,'ppm',0.1],['otemp','Outdoor temp',10,45,1,'°C',30],['temp','Indoor temp',10,45,0.5,'°C',26],['setp','AC setpoint',18,30,1,'°C',24],['hum','Outdoor humidity',20,95,1,'%',50],['vol','Weather volatility',0,100,1,'%',20]];
 const ACT=[5,10,30,60],$=id=>document.getElementById(id),fmt=(v,d=0)=>Number(v).toFixed(d);
 let Q={},W=[0,0,0,0,0,0],mlN=0,mlErr=0,rlN=0,eps=0.1,training=false,mode='rl';
-let E,base,M,prevM,wakeIn,intervalMin,wakes,vsec,decision,prevDec,filter,win,pos,actT,actTarget,dwell,moves,exposure,lastReal,lastWakeV,paused=false,speed=60,moveT,energyUsed,intervalSum,pendingWant,riskMin,movesSince,lastS,lastA,mlX,curS;
+let E,base,M,prevM,wakeIn,intervalMin,wakes,vsec,decision,prevDec,filter,win,pos,actT,actTarget,dwell,moves,exposure,lastReal,lastWakeV,paused=false,speed=60,moveT,energyUsed,intervalSum,pendingWant,riskMin,movesSince,lastS,lastA,mlX,curS,ac,acOffV,acKwh,acRun,cmfOpen;
 function log(t){if(training)return;const li=document.createElement('li');li.innerHTML='<time>'+new Date().toLocaleTimeString()+'</time>'+t;$('log').prepend(li);while($('log').children.length>60)$('log').lastChild.remove()}
 function init(){
  E={};SL.forEach(s=>E[s[0]]=s[6]);base={opm:E.opm,opm10:E.opm10};
- M=null;prevM=null;wakes=0;vsec=0;decision={a:'HOLD',why:'Waiting for first reading',at:null};prevDec=null;filter=false;win='CLOSED';pos=0;actT=null;actTarget=null;pendingWant=null;dwell=99;moves=0;exposure=0;lastWakeV=0;moveT=0;energyUsed=0;intervalSum=0;intervalMin=30;wakeIn=1;riskMin=0;movesSince=0;lastS=null;lastA=null;mlX=null;curS=null;lastReal=Date.now();
+ M=null;prevM=null;wakes=0;vsec=0;decision={a:'HOLD',why:'Waiting for first reading',at:null};prevDec=null;filter=false;win='CLOSED';pos=0;actT=null;actTarget=null;pendingWant=null;dwell=99;moves=0;exposure=0;lastWakeV=0;moveT=0;energyUsed=0;intervalSum=0;intervalMin=30;wakeIn=1;riskMin=0;movesSince=0;lastS=null;lastA=null;mlX=null;curS=null;ac=false;acOffV=999;acKwh=0;acRun=0;cmfOpen=false;lastReal=Date.now();
  if(!training){$('log').innerHTML='';buildCtl();log('Simulation started. Window closed, filter off.')}
 }
 function buildCtl(){
@@ -125,7 +125,7 @@ function buildCtl(){
   l.querySelector('input').oninput=e=>{E[s[0]]=+e.target.value;if(s[0]=='opm')base.opm=E.opm;if(s[0]=='opm10')base.opm10=E.opm10}});
 }
 const dot=(a,b)=>a.reduce((s,v,i)=>s+v*b[i],0);
-function sense(){const n=v=>v*(1+(Math.random()-.5)*.06);return{opm:n(E.opm),opm10:n(E.opm10),ipm:n(E.ipm),co2:n(E.co2),voc:n(E.voc),temp:E.temp,hum:E.hum,occ:E.occ,bat:E.bat,t:vsec,roc:0,fc:0}}
+function sense(){const n=v=>v*(1+(Math.random()-.5)*.06);return{opm:n(E.opm),opm10:n(E.opm10),ipm:n(E.ipm),co2:n(E.co2),voc:n(E.voc),temp:E.temp,otemp:E.otemp,hum:E.hum,occ:E.occ,bat:E.bat,t:vsec,roc:0,fc:0}}
 function ruleInterval(m){let i=30;if(m.opm>60||m.co2>1000||m.ipm>25||Math.abs(m.roc)>2)i=10;if(m.opm>125||m.co2>1400||m.ipm>35||Math.abs(m.roc)>6)i=5;if(i==30&&m.bat<25)i=60;return i}
 function stateKey(m){return ''+(m.opm>125?2:m.opm>60?1:0)+(m.co2>1400?2:m.co2>1000?1:0)+(Math.abs(m.roc)>3?1:0)+(m.bat<25?1:0)+(m.fc>m.opm+10?1:0)}
 function decide(m){
@@ -159,7 +159,12 @@ function wake(){
   if(M.opm>125||M.co2>1400)ai=Math.min(ai,1)}
  else ai=ACT.indexOf(ruleInterval(M));
  lastS=s;lastA=ai;curS=s;intervalMin=ACT[ai];intervalSum+=intervalMin;wakeIn=intervalMin*60/speed;lastWakeV=vsec;
- const d=decide(M);prevDec=decision.at?decision:prevDec;decision={a:d.a,why:d.why,at:Date.now()};
+ const d=decide(M);
+ const comf=M.opm<=60&&M.opm<=M.ipm+10&&Math.abs(M.otemp-E.setp)<=(win==='OPEN'||actTarget==='OPEN'?3:2)&&M.hum<70;
+ if(comf&&d.a!=='CLOSE'){d.a='OPEN';d.f=false;cmfOpen=true;d.why='Outdoor air is clean, similar to indoor, and '+fmt(M.otemp)+'°C is near the '+E.setp+'°C setpoint. AC off, window open.'}
+ else if(cmfOpen&&d.a==='HOLD'&&win==='OPEN'){d.a='CLOSE';cmfOpen=false;d.why='Outdoor conditions no longer comfortable. Close window first, then AC resumes.'}
+ else if(d.a!=='HOLD')cmfOpen=false;
+ prevDec=decision.at?decision:prevDec;decision={a:d.a,why:d.why,at:Date.now()};
  if(d.f!==filter){filter=d.f;log('Filter '+(filter?'ON':'OFF'))}
  log('Sensor woke: PM2.5 '+fmt(M.opm)+', CO₂ '+fmt(M.co2)+'. Decision <b>'+d.a+'</b>. Next wake in '+intervalMin+' min'+(mode==='rl'?' (RL)':' (rule)')+'.');
  pendingWant=null;
@@ -174,11 +179,20 @@ function physics(dt){
  E.co2+=E.occ*3*vm-(E.co2-420)*kk;E.voc+=((0.03+E.occ*0.015)-E.voc)*(1-Math.exp(-(0.01+k)*vm));
  E.ipm=Math.min(100,Math.max(0,E.ipm));E.co2=Math.min(2000,Math.max(400,E.co2));E.voc=Math.min(1,Math.max(0,E.voc));
  const use=(0.0005+(filter?0.004:0))*vm;E.bat=Math.max(0,E.bat-use);energyUsed+=use;
+ const kt=win=='OPEN'?0.05:win=='MOVING'?0.025:0.004;E.temp+=(E.otemp-E.temp)*(1-Math.exp(-kt*vm));
+ if(ac){E.temp+=(E.setp-E.temp)*(1-Math.exp(-0.12*vm));acKwh+=vm/60;acRun+=vm}
+ E.temp=Math.min(45,Math.max(10,E.temp));acOffV+=vm*60;
  if(E.ipm>35){exposure+=vm}
  if(E.ipm>35||E.co2>1400||(E.opm>125&&pos>.3))riskMin+=vm;
 }
+function acCtl(){
+ const ok=win==='CLOSED'&&actTarget!=='OPEN',dv=Math.abs(E.temp-E.setp);
+ if(!ok){if(ac){ac=false;acOffV=0;log('AC OFF (window open or opening)')}return}
+ if(!ac&&acOffV>=180&&dv>1){ac=true;log('AC ON (indoor '+fmt(E.temp,1)+'°C, setpoint '+E.setp+'°C)')}
+ else if(ac&&dv<=0.5){ac=false;acOffV=0;log('AC OFF (setpoint reached)')}
+}
 function step(dt){
- physics(dt);dwell+=dt;
+ physics(dt);dwell+=dt;acCtl();
  wakeIn-=dt;if(wakeIn<=0)wake();
  if(actT!==null){actT-=dt;if(actT<=0){win='MOVING';moveT=2;actT=null;log('Window moving to '+actTarget)}}
  if(win=='MOVING'){moveT-=dt;const tp=actTarget=='OPEN'?1:0;pos+=(tp-pos)*Math.min(1,dt*3);
@@ -189,21 +203,21 @@ function train(n){
  training=true;const sp=speed,pe=eps;speed=300;eps=0.3;
  for(let e=0;e<n;e++){init();
   for(let i=0;i<300;i++){
-   if(i%50===0){base.opm=E.opm=Math.random()*220;E.occ=Math.floor(Math.random()*9);E.vol=Math.random()*80;E.bat=10+Math.random()*90;E.co2=500+Math.random()*900}
+   if(i%50===0){base.opm=E.opm=Math.random()*220;E.occ=Math.floor(Math.random()*9);E.vol=Math.random()*80;E.otemp=12+Math.random()*28;E.bat=10+Math.random()*90;E.co2=500+Math.random()*900}
    step(1)}}
  training=false;speed=sp;eps=0.05;init();buildCtl();log('Pre-trained RL for '+n+' episodes ('+rlN+' updates). Exploration now 5%.');
 }
 const tm=t=>t?new Date(t).toLocaleTimeString():'';
 function render(){
- SL.forEach(s=>{const k=s[0],r=$('r_'+k);if(document.activeElement!==r)r.value=E[k];$('v_'+k).textContent=fmt(E[k],s[4]<1?2:0)+' '+s[5]});
+ SL.forEach(s=>{const k=s[0],r=$('r_'+k);if(document.activeElement!==r)r.value=E[k];$('v_'+k).textContent=fmt(E[k],s[4]<1?(s[4]==.5?1:2):0)+' '+s[5]});
  $('vt').textContent=String(Math.floor(vsec/3600)).padStart(2,'0')+':'+String(Math.floor(vsec/60)%60).padStart(2,'0');
  $('wstate').textContent=win;$('sash').style.cssText='transform-origin:40px 175px;transform:scaleX('+(1-.65*pos)+')';
  $('haze').setAttribute('opacity',Math.min(.6,E.opm/250*.8));
  const fp=$('flowp');fp.setAttribute('opacity',pos>.3?1:0);fp.setAttribute('stroke',E.opm>125?'var(--bad)':E.opm>60?'var(--warn)':'var(--ok)');
  $('fan').classList.toggle('fan',filter);$('fanlbl').textContent=filter?'Filter running':'Filter off';
- const fs=$('fstate');fs.textContent='Filter '+(filter?'ON':'OFF');fs.className='pill '+(filter?'warn':'ok');
+ const fs=$('fstate');fs.textContent='Filter '+(filter?'ON':'OFF');fs.className='pill '+(filter?'warn':'ok');const as=$('astate');as.textContent='AC '+(ac?'ON':'OFF');as.className='pill '+(ac?'warn':'ok');
  if(M){$('last').textContent=fmt((Date.now()-lastReal)/1000)+'s ago';$('lastAt').textContent='at '+tm(lastReal);
-  $('sens').innerHTML=[['Outdoor PM2.5',M.opm,'µg/m³'],['Outdoor PM10',M.opm10,'µg/m³'],['Indoor PM2.5',M.ipm,'µg/m³'],['CO₂',M.co2,'ppm'],['VOC',M.voc,'ppm',2],['Temp',M.temp,'°C'],['Humidity',M.hum,'%'],['Occupancy',M.occ,'people'],['Battery',E.bat,'%',1]].map(a=>'<div class="s"><span>'+a[0]+'</span><b>'+fmt(a[1],a[3]||0)+'</b><span>'+a[2]+'</span></div>').join('');
+  $('sens').innerHTML=[['Outdoor PM2.5',M.opm,'µg/m³'],['Outdoor PM10',M.opm10,'µg/m³'],['Indoor PM2.5',M.ipm,'µg/m³'],['CO₂',M.co2,'ppm'],['VOC',M.voc,'ppm',2],['Indoor temp',M.temp,'°C',1],['Outdoor temp',M.otemp,'°C',1],['Outdoor humidity',M.hum,'%'],['Occupancy',M.occ,'people'],['Battery',E.bat,'%',1]].map(a=>'<div class="s"><span>'+a[0]+'</span><b>'+fmt(a[1],a[3]||0)+'</b><span>'+a[2]+'</span></div>').join('');
  }else $('sens').innerHTML='<span style="color:var(--mute)">Sensor asleep. Waiting for first wake.</span>';
  const nx=fmt(Math.max(0,wakeIn))+'s';$('next').textContent=nx;$('next2').textContent=nx;$('nextI').textContent='interval '+intervalMin+' min virtual';
  const nm=d=>d.a=='HOLD'?'HOLD':d.a+' WINDOW';
@@ -215,7 +229,7 @@ function render(){
  $('ml').innerHTML=[['PM2.5 forecast',M?fmt(M.fc):'–','µg/m³ next wake'],['Forecast error',fmt(mlErr,1),'µg/m³ avg ('+mlN+' obs)'],['RL state',curS||'–','PM·CO₂·Δ·bat·fc'],['RL updates',rlN,'exploration '+fmt(eps*100)+'%']].map(a=>'<div class="s"><span>'+a[0]+'</span><b>'+a[1]+'</b><span>'+a[2]+'</span></div>').join('');
  $('qv').innerHTML=ACT.map((a,i)=>'<div class="'+(lastA===i&&mode==='rl'?'best':'')+'">'+a+' min<br>Q '+fmt(q[i],1)+'</div>').join('');
  const fixed=Math.floor(vsec/300),avg=wakes?intervalSum/wakes:0;
- $('met').innerHTML=[['Adaptive wake-ups',wakes],['Fixed 5-min wake-ups',fixed],['Sensing saved',fixed?fmt(Math.max(0,(1-wakes/fixed)*100))+'%':'–'],['Avg interval',fmt(avg,1)+' min'],['Window moves',moves],['Indoor PM2.5 > 35',fmt(exposure)+' min'],['Energy used',fmt(energyUsed,2)+'%']].map(a=>'<div class="s"><span>'+a[0]+'</span><b style="font-size:17px">'+a[1]+'</b></div>').join('');
+ $('met').innerHTML=[['Adaptive wake-ups',wakes],['Fixed 5-min wake-ups',fixed],['Sensing saved',fixed?fmt(Math.max(0,(1-wakes/fixed)*100))+'%':'–'],['Avg interval',fmt(avg,1)+' min'],['Window moves',moves],['Indoor PM2.5 > 35',fmt(exposure)+' min'],['Sensing energy',fmt(energyUsed,2)+'%'],['AC runtime',fmt(acRun)+' min'],['AC energy (separate)',fmt(acKwh,2)+' kWh']].map(a=>'<div class="s"><span>'+a[0]+'</span><b style="font-size:17px">'+a[1]+'</b></div>').join('');
 }
 $('speed').onchange=e=>{const n=+e.target.value;wakeIn=wakeIn*speed/n;speed=n};
 $('wake').onclick=()=>{wake();render()};
